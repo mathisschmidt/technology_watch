@@ -1,22 +1,23 @@
 [project]
-name = "veille-tech"
-version = "0.1.0"
-description = "TUI that turns Google Tasks into researched Obsidian notes"
-requires-python = ">=3.10"
+name = "techno-watch-bot"
+version = "2.0.0"
+description = "TUI that drives Claude Code to research Google Tasks and write tech-watch notes"
+requires-python = ">=3.11"
 dependencies = [
-  "anthropic>=0.39",
-  "google-api-python-client>=2.130",
-  "google-auth-httplib2>=0.2",
-  "google-auth-oauthlib>=1.2",
-  "python-slugify>=8.0",
+  "claude-agent-sdk>=0.1.0",
   "pydantic>=2.0",
-  "pyyaml>=6.0",
-  "typer>=0.25.1",
-  "rich>=15.0.0",
+  "python-slugify>=8.0",
+  "rich>=13.0",
+  "textual>=0.80",
+  "tomli-w>=1.0",
+  "typer>=0.12",
 ]
 
 [project.scripts]
-veille-tech = "veille_tech.cli:main"
+techno-watch-bot = "techno_watch_bot.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.23"]
 
 [build-system]
 requires = ["setuptools>=68"]
@@ -24,4 +25,9 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["veille_tech*"]
+include = ["techno_watch_bot*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]

@@ -1,193 +1,87 @@
-# veille-tech
+# techno-watch-bot
 
-> Turn your Google Tasks list into researched Obsidian notes — automatically.
+A terminal UI that has **Claude Code** research your Google Tasks.
 
-**veille-tech** is a terminal app that picks up open tasks from a Google Tasks list, asks Claude to research each topic live on the web, and writes a structured markdown note straight into your Obsidian vault. Your Seafile (or any sync client) picks up the new files on its own.
+For each task Claude:
+1. reads the title and description,
+2. runs a few quick web searches and decides whether there is enough to dig into
+   (if not, it skips the task and says why),
+3. digs deeper and collects as much information as it can,
+4. writes the result into your notes folder, in the format the task asks for or
+   by default as a structured markdown note,
+5. marks the task as completed in Google Tasks.
 
-```
-┌─ veille-tech ──────────────────────── 12:34:00 ──────────────────────────────┐
-│ Tasks – Veille tech          │ Preview                                        │
-│──────────────────────────────│────────────────────────────────────────────────│
-│ · ●  Bun 1.2 release         │ # Rust-based JS runtimes                       │
-│ ✓ ⟳  Rust-based JS runtimes  │                                                │
-│ · –  Deno Deploy pricing     │ Comparing Bun, Deno and Node on cold-start…    │
-│                              │                                                │
-│                              │ ---                                            │
-│                              │ Status: running                                │
-│──────────────────────────────────────────────────────────────────────────────│
-│ → Rust-based JS runtimes                                                      │
-│   ✓ wrote 2026-05-12 - rust-based-js-runtimes.md (6 searches, 38s)           │
-│   marked task as completed                                                    │
-│──────────────────────────────────────────────────────────────────────────────│
-│  selected: 1/3   complete-on-success: ON   vault: ~/Seafile/Vault/Veille Tech │
-│ space Toggle  a All  n None  r Research  c Toggle COS  R Reload  q Quit      │
-└──────────────────────────────────────────────────────────────────────────────┘
-```
+After each run the app writes a **research-report** (tasks done, skipped or failed
+with the reason, tokens and cost per task and in total). Only the newest 5 reports
+are kept (you can change this in the settings).
 
----
+## Requirements
 
-## Features
+- Python ≥ 3.11 and [uv](https://docs.astral.sh/uv/)
+- [Claude Code](https://code.claude.com) installed and logged in (`claude` works in your terminal)
+- A Google Tasks MCP server configured in Claude Code (default name: `google-task`)
+  that exposes `list_task_lists`, `list_tasks`, `get_task` and `patch_task`
 
-- **Live web research** — Claude searches the web (up to N queries per task, configurable) and synthesises findings into a clean note
-- **Structured output** — every note follows a fixed five-section template so your vault stays consistent
-- **Idempotent** — tasks that already have a note are marked *skipped*; re-running is always safe
-- **Completes tasks automatically** — optionally marks the Google Task as done after writing the note (toggle with `c` at runtime)
-- **Async TUI** — the interface stays responsive while research runs in the background
+Python never talks to Google or to the Anthropic API directly. Everything goes
+through Claude Code, using your login and your MCP servers.
 
----
-
-## How it works
-
-```
-Google Tasks  →  veille-tech  →  Claude (web search)  →  Obsidian vault
-     ↑                                                         ↓
-     └──────────────── mark task completed ───────────────────┘
-```
-
-1. On launch, the app fetches all open tasks from your configured list
-2. You select which ones to research (`space` to toggle, `a` for all)
-3. Press `r` — for each selected task, Claude does live web searches and writes a structured note
-4. The note lands in your vault folder with YAML frontmatter; your sync client handles the rest
-
----
-
-## Prerequisites
-
-- Python 3.10+
-- [uv](https://docs.astral.sh/uv/) for dependency management
-- An [Anthropic API key](https://console.anthropic.com/) with **web search enabled** (org-level toggle in Console settings)
-- A Google Cloud project with the **Tasks API** enabled and OAuth 2.0 Desktop credentials
-
----
-
-## Installation
+## Install and run
 
 ```bash
-git clone https://github.com/your-username/veille-tech
-cd veille-tech
 uv sync
 ```
 
----
-
-## Configuration
-
-Everything lives in a **single YAML file** at `~/.config/veille-tech/config.yaml`.
-
-### 1. Get your Google OAuth credentials
-
-1. Go to [Google Cloud Console](https://console.cloud.google.com/), create a project
-2. Enable the **Google Tasks API**
-3. Create an OAuth 2.0 credential of type **Desktop app**
-4. Note the **Client ID** and **Client Secret** from the credential detail page
-
-### 2. Create `~/.config/veille-tech/config.yaml`
-
-> **Custom config location** — set `VEILLE_TECH_CONFIG_DIR` to use a different directory:
-> ```bash
-> export VEILLE_TECH_CONFIG_DIR=~/dotfiles/veille-tech
-> ```
-> The app will look for `config.yaml` inside that directory instead.
-
-```yaml
-# Folder inside your Obsidian vault where notes are written
-vault_folder: ~/Seafile/MyVault/Veille Tech
-
-# Google Tasks list name (case-insensitive)
-task_list_name: Veille tech
-
-# Mark the task as completed after writing its note
-complete_on_success: true
-
-# Anthropic API key
-anthropic_api_key: "sk-ant-..."
-
-# Claude model
-model: claude-opus-4-7
-
-# Max web searches per task
-max_web_searches: 8
-
-# Google OAuth2 credentials (from Cloud Console)
-google_client_id: "xxxx.apps.googleusercontent.com"
-google_client_secret: "GOCSPX-..."
-
-# OAuth token — auto-managed after first login, do not edit
-google_token: {}
+```bash
+uv run techno-watch-bot
 ```
 
-The first launch opens a browser for Google authorization. The token is written back into `google_token` automatically and persisted in this same file.
-
----
-
-## Usage
+On first launch the Settings screen opens. Use `--fake` to try the UI with a
+simulated backend (no Claude calls):
 
 ```bash
-uv run veille-tech
+uv run techno-watch-bot --fake
 ```
 
-### Keybindings
+## Screens
 
-| Key     | Action                              |
-|---------|-------------------------------------|
-| `↑ / ↓` | Navigate the task list             |
-| `space` | Toggle selection on current task    |
-| `a`     | Select all tasks                    |
-| `n`     | Deselect all tasks                  |
-| `r`     | Research selected tasks             |
-| `c`     | Toggle complete-on-success          |
-| `R`     | Reload tasks from Google            |
-| `q`     | Quit                                |
+| Screen | Keys |
+|---|---|
+| **Home**: menu and current settings (task list, folders, MCP, model) | `r` run · `h` history · `s` settings · `q` quit |
+| **Task picker**: open tasks fetched by Claude; first row is "★ All tasks" | ↑/↓ + Enter · `a` run all · `r` refresh · Esc back |
+| **Monitor**: queue and statuses, current step, tokens, cost, time, Claude limits, activity log | `c` cancel · `o` open report · Esc home (when finished) |
+| **History**: the last reports; Enter opens one | Esc back |
+| **Settings**: every path and option, saved to the config file | Ctrl+S save · Esc back |
 
----
+## Settings
 
-## Generated note format
+Stored in `~/.config/techno-watch-bot/config.toml` (override the folder with
+`TECHNO_WATCH_CONFIG_DIR`). All of them can be edited from the UI.
 
-Each note is written as a markdown file with YAML frontmatter:
+| Key | Default | Meaning |
+|---|---|---|
+| `task_list_name` | `Veille tech` | Google Tasks list to read |
+| `notes_dir` | `~/techno-watch/notes` | Where results are written (e.g. an Obsidian vault folder) |
+| `reports_dir` | `~/.local/share/techno-watch-bot/reports` | Where research-reports are stored |
+| `max_reports` | `5` | Older reports are deleted beyond this |
+| `google_task_mcp_name` | `google-task` | Name of the MCP server in Claude Code |
+| `model` | *(empty)* | Empty means Claude Code's default model |
+| `max_turns_per_task` | `40` | Hard stop for one task |
+| `scout_max_searches` | `3` | Quick searches before the dig / skip decision |
+| `claude_cli_path` | *(empty)* | Custom `claude` binary |
 
-```markdown
----
-title: "Bun 1.2 release"
-date: 2026-05-12
-google_task_id: abc123xyz
-web_searches_used: 6
-tags:
-  - veille-tech
----
+## Safety
 
-## TL;DR
-...
+Each task runs as a separate headless Claude Code session with
+`permission_mode="dontAsk"`. Claude can only use WebSearch, WebFetch,
+Read/Write/Edit/Glob (working directory = notes folder), and the read and
+patch Google Tasks tools. Bash and the delete tools are disallowed.
 
-## Why it matters
-...
+## Development
 
-## Key points
-...
-
-## Things to dig into
-...
-
-## Sources
-- [Title](URL) — one-sentence note on what's in it.
+```bash
+uv run pytest
 ```
 
-Files are named `YYYY-MM-DD - slugified-title.md` and land directly in the configured vault folder.
-
----
-
-## Project structure
-
-```
-veille_tech/
-├── app.py           # Textual TUI — layout, keybindings, async worker
-├── config.py        # Config loader (config.toml)
-├── google_tasks.py  # Google Tasks API wrapper (OAuth2)
-├── research.py      # Claude call with web_search tool + note renderer
-└── vault.py         # Idempotent note writer
-```
-
----
-
-## License
-
-MIT
+Tests cover config, report rendering and rotation, parsing of SDK messages,
+the runner (with a fake backend, failures and cancellation), and the Textual
+screens through `App.run_test()`.

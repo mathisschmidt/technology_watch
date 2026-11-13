@@ -22,7 +22,7 @@ class Settings(BaseModel):
     notes_dir: Path = DEFAULT_NOTES_DIR
     reports_dir: Path = DEFAULT_REPORTS_DIR
     max_reports: int = Field(default=5, ge=1, le=100)
-    google_task_mcp_name: str = "google-task"
+    tasks_mcp_url: str = ""  # set by the user in Settings, never hard-coded
     model: str = ""
     max_turns_per_task: int = Field(default=40, ge=5, le=500)
     scout_max_searches: int = Field(default=3, ge=1, le=10)
@@ -33,12 +33,25 @@ class Settings(BaseModel):
     def _expand(cls, v: str | Path) -> Path:
         return Path(v).expanduser()
 
-    @field_validator("task_list_name", "google_task_mcp_name")
+    @field_validator("task_list_name")
     @classmethod
     def _non_empty(cls, v: str) -> str:
         v = v.strip()
         if not v:
             raise ValueError("must not be empty")
+        return v
+
+    @field_validator("tasks_mcp_url")
+    @classmethod
+    def _url(cls, v: str) -> str:
+        v = v.strip().rstrip("/")
+        if v.endswith("/mcp"):
+            v = v[:-4]
+        if not v:
+            return ""  # not configured yet
+        if not (v.startswith("https://") or v.startswith("http://localhost")
+                or v.startswith("http://127.0.0.1")):
+            raise ValueError("must be an https:// URL (http only for localhost)")
         return v
 
     # ------------------------------------------------------------------ io
@@ -65,7 +78,3 @@ class Settings(BaseModel):
     def ensure_dirs(self) -> None:
         self.notes_dir.mkdir(parents=True, exist_ok=True)
         self.reports_dir.mkdir(parents=True, exist_ok=True)
-
-    # -------------------------------------------------------------- helpers
-    def mcp_tool(self, name: str) -> str:
-        return f"mcp__{self.google_task_mcp_name}__{name}"

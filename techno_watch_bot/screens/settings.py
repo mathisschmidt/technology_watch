@@ -10,11 +10,12 @@ from textual.widgets import Button, Footer, Header, Input, Label, Static
 from ..config import CONFIG_FILE, Settings
 
 FIELDS: list[tuple[str, str, str]] = [
-    ("task_list_name", "Google Tasks list name", "Title of the list Claude reads tasks from"),
+    ("task_list_name", "Google Tasks list name", "Title of the list to read tasks from"),
     ("notes_dir", "Notes directory", "Where research results are written (e.g. Obsidian vault)"),
     ("reports_dir", "Reports directory", "Where research-reports are stored"),
     ("max_reports", "Reports to keep", "Older reports are deleted beyond this number"),
-    ("google_task_mcp_name", "Google Tasks MCP server name", "As configured in Claude Code"),
+    ("tasks_mcp_url", "Google Tasks MCP server URL",
+     "Your google-tasks-mcp server (the app calls it directly; reconnect after changing it)"),
     ("model", "Model", "Empty = Claude Code default (e.g. claude-opus-5-5)"),
     ("max_turns_per_task", "Max turns per task", "Hard stop for one task's agent loop"),
     ("scout_max_searches", "Scouting searches", "Quick searches before deciding to dig"),

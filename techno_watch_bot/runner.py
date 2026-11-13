@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import TypeVar
 
 from . import reports
-from .claude import Backend
+from .claude import Backend, TaskSource
 from .config import Settings
 from .events import Phase, PhaseEvent, TaskEvent, TaskInfo, TaskOutcome, TaskRun, UsageEvent
 
@@ -76,9 +76,11 @@ async def _until(stream: AsyncIterator[T], stop: asyncio.Event) -> AsyncIterator
 
 
 class Runner:
-    def __init__(self, settings: Settings, backend: Backend, tasks: list[TaskInfo]) -> None:
+    def __init__(self, settings: Settings, backend: Backend, tasks: list[TaskInfo],
+                 task_source: TaskSource) -> None:
         self.settings = settings
         self.backend = backend
+        self.task_source = task_source
         self.runs = [TaskRun(task=t) for t in tasks]
         self._stop = asyncio.Event()
 
@@ -107,6 +109,9 @@ class Runner:
                 if not run.status.finished:
                     run.status = Phase.FAILED
                     run.reason = run.reason or "No result received."
+                if run.status == Phase.DONE:
+                    async for ev in self._complete(run):
+                        yield TaskUpdate(i, ev)
             except _Stopped:
                 run.status = Phase.CANCELLED
                 run.reason = "Run cancelled by the user while this task was in progress."
@@ -131,6 +136,24 @@ class Runner:
         except OSError as exc:
             err = str(exc)
         yield RunFinished(self.runs, report_path, self.cancelled, err)
+
+    async def _complete(self, run: TaskRun) -> AsyncIterator[TaskEvent]:
+        """Check the result file, then mark the task done in Google Tasks."""
+        if not run.result_path or not Path(run.result_path).expanduser().exists():
+            run.status = Phase.FAILED
+            run.reason = (f"Claude reported success but the result file "
+                          f"{run.result_path or '(none)'} does not exist; task left open.")
+            return
+        run.status = Phase.COMPLETING
+        yield PhaseEvent(Phase.COMPLETING)
+        try:
+            await self.task_source.complete_task(self.settings, run.task)
+        except Exception as exc:  # noqa: BLE001
+            run.status = Phase.FAILED
+            run.reason = (f"Result written to {run.result_path} but marking the task "
+                          f"done failed: {exc}")
+            return
+        run.status = Phase.DONE
 
     @staticmethod
     def _apply(run: TaskRun, ev: TaskEvent) -> None:

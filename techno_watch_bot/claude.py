@@ -1,8 +1,9 @@
-"""Claude Code backend (via claude-agent-sdk) + a fake backend for demos/tests.
+"""Claude Code research backend (via claude-agent-sdk) + a fake backend.
 
-A backend exposes two coroutines:
-- ``list_tasks(settings)`` -> list[TaskInfo]
-- ``run_task(settings, task)`` -> async iterator of TaskEvent, ending with TaskOutcome
+- A *research backend* exposes ``run_task(settings, task)``: an async iterator of
+  TaskEvent ending with a TaskOutcome. Claude only researches and writes files.
+- A *task source* (see tasks_api.McpTaskSource) lists and completes tasks.
+FakeBackend implements both, for ``--fake`` and tests.
 """
 from __future__ import annotations
 
@@ -32,20 +33,24 @@ from .events import (
 )
 
 
-class BackendError(RuntimeError):
-    pass
-
-
 class Backend(Protocol):
+    def run_task(self, settings: Settings, task: TaskInfo) -> AsyncIterator[TaskEvent]: ...
+
+
+class TaskSource(Protocol):
     async def list_tasks(self, settings: Settings) -> list[TaskInfo]: ...
 
-    def run_task(self, settings: Settings, task: TaskInfo) -> AsyncIterator[TaskEvent]: ...
+    async def complete_task(self, settings: Settings, task: TaskInfo) -> None: ...
+
+    def status(self, settings: Settings) -> str: ...
+
+    def login(self, settings: Settings) -> str: ...
 
 
 # ==========================================================================
 # Stream parsing (pure, testable)
 # ==========================================================================
-_PHASE_RE = re.compile(r"^\s*PHASE:\s*(scouting|digging|writing|completing)\b", re.I | re.M)
+_PHASE_RE = re.compile(r"^\s*PHASE:\s*(scouting|digging|writing)\b", re.I | re.M)
 _JSON_BLOCK_RE = re.compile(r"\{.*\}", re.S)
 
 
@@ -111,8 +116,6 @@ class StreamParser:
                         self._set_phase(Phase.SCOUTING, out)
                     if short in ("Write", "Edit"):
                         self._set_phase(Phase.WRITING, out)
-                    elif short in ("patch_task", "update_task"):
-                        self._set_phase(Phase.COMPLETING, out)
                     if short != "StructuredOutput":
                         out.append(ToolEvent(short, _tool_detail(name, block.input or {})))
             msg_id = getattr(msg, "message_id", None)
@@ -176,7 +179,11 @@ class StreamParser:
 # Real backend
 # ==========================================================================
 class ClaudeCodeBackend:
-    def _options(self, settings: Settings, **kw: Any):
+    """Runs one headless Claude Code session per task: web research + writing only."""
+
+    TOOLS = ["WebSearch", "WebFetch", "Read", "Write", "Edit", "Glob"]
+
+    def options(self, settings: Settings, task: TaskInfo):
         from claude_agent_sdk import ClaudeAgentOptions
 
         settings.notes_dir.mkdir(parents=True, exist_ok=True)
@@ -184,83 +191,27 @@ class ClaudeCodeBackend:
             cwd=str(settings.notes_dir),
             cli_path=settings.claude_cli_path or None,
             model=settings.model or None,
-            setting_sources=["user", "project", "local"],  # loads the user's MCP servers
-            permission_mode="dontAsk",  # anything not pre-approved is denied
-            disallowed_tools=[
-                "Bash",
-                settings.mcp_tool("delete_task"),
-                settings.mcp_tool("delete_task_list"),
-                settings.mcp_tool("clear_completed_tasks"),
-            ],
-            **kw,
-        )
-
-    async def list_tasks(self, settings: Settings) -> list[TaskInfo]:
-        from claude_agent_sdk import query
-
-        options = self._options(
-            settings,
-            allowed_tools=[
-                settings.mcp_tool("list_task_lists"),
-                settings.mcp_tool("list_tasks"),
-                "StructuredOutput",
-            ],
-            max_turns=15,
-            output_format={"type": "json_schema", "schema": prompts.LIST_TASKS_SCHEMA},
-        )
-        result = None
-        async for msg in query(prompt=prompts.list_tasks_prompt(settings), options=options):
-            if type(msg).__name__ == "ResultMessage":
-                result = msg
-        if result is None:
-            raise BackendError("Claude Code returned no result.")
-        data = result.structured_output if isinstance(result.structured_output, dict) else None
-        data = data or extract_json(result.result)
-        if not data:
-            raise BackendError(result.result or "Could not read the task list from Claude.")
-        if data.get("error") and not data.get("tasks"):
-            raise BackendError(str(data["error"]))
-        list_id = str(data.get("task_list_id") or "")
-        return [
-            TaskInfo(
-                id=str(t["id"]),
-                title=str(t.get("title") or "(untitled)"),
-                notes=str(t.get("notes") or ""),
-                due=str(t.get("due") or ""),
-                list_id=list_id,
-            )
-            for t in data.get("tasks") or []
-            if t.get("id")
-        ]
-
-    async def run_task(self, settings: Settings, task: TaskInfo) -> AsyncIterator[TaskEvent]:
-        from claude_agent_sdk import query
-
-        options = self._options(
-            settings,
             system_prompt={
                 "type": "preset",
                 "preset": "claude_code",
                 "append": prompts.research_system_append(settings, task),
             },
-            tools=["WebSearch", "WebFetch", "Read", "Write", "Edit", "Glob"],
-            allowed_tools=[
-                "WebSearch",
-                "WebFetch",
-                "Read",
-                "Write",
-                "Edit",
-                "Glob",
-                "StructuredOutput",
-                settings.mcp_tool("list_task_lists"),
-                settings.mcp_tool("get_task"),
-                settings.mcp_tool("patch_task"),
-                settings.mcp_tool("update_task"),
-            ],
+            # No MCP servers at all: task management is done by Python.
+            mcp_servers={},
+            strict_mcp_config=True,
+            tools=self.TOOLS,
+            allowed_tools=[*self.TOOLS, "StructuredOutput"],
+            disallowed_tools=["Bash"],
+            permission_mode="dontAsk",  # anything not pre-approved is denied
             max_turns=settings.max_turns_per_task,
             output_format={"type": "json_schema", "schema": prompts.RESEARCH_SCHEMA},
         )
+
+    async def run_task(self, settings: Settings, task: TaskInfo) -> AsyncIterator[TaskEvent]:
+        from claude_agent_sdk import query
+
         parser = StreamParser()
+        options = self.options(settings, task)
         async for msg in query(prompt=prompts.research_user_prompt(task), options=options):
             for event in parser.feed(msg):
                 yield event
@@ -275,6 +226,20 @@ class ClaudeCodeBackend:
 class FakeBackend:
     def __init__(self, delay: float | None = None) -> None:
         self.delay = float(os.environ.get("TECHNO_WATCH_FAKE_DELAY", 0.6)) if delay is None else delay
+        self.completed: list[str] = []
+        self.fail_complete = False
+
+    def status(self, settings: Settings) -> str:
+        return "fake (simulated)"
+
+    def login(self, settings: Settings) -> str:
+        return self.status(settings)
+
+    async def complete_task(self, settings: Settings, task: TaskInfo) -> None:
+        await asyncio.sleep(self.delay)
+        if self.fail_complete:
+            raise RuntimeError("server unreachable")
+        self.completed.append(task.id)
 
     async def list_tasks(self, settings: Settings) -> list[TaskInfo]:
         await asyncio.sleep(self.delay)
@@ -316,16 +281,16 @@ class FakeBackend:
         path.write_text(f"# {task.title}\n\n(fake note)\n", encoding="utf-8")
         async for e in step(ToolEvent("Write", str(path)), 3000):
             yield e
-        async for e in step(PhaseEvent(Phase.COMPLETING)):
-            yield e
-        async for e in step(ToolEvent("patch_task", task.id), 500):
-            yield e
         yield TaskOutcome(Phase.DONE, summary=f"Researched {task.title} and wrote a note.",
                           result_path=str(path), sources=["https://example.com"],
                           usage=usage, cost_usd=0.12, num_turns=9)
 
 
-def default_backend() -> Backend:
+def default_backends() -> tuple[Backend, TaskSource]:
+    """(research backend, task source) — both fake with TECHNO_WATCH_FAKE=1."""
     if os.environ.get("TECHNO_WATCH_FAKE"):
-        return FakeBackend()
-    return ClaudeCodeBackend()
+        fake = FakeBackend()
+        return fake, fake
+    from .tasks_api import McpTaskSource
+
+    return ClaudeCodeBackend(), McpTaskSource()

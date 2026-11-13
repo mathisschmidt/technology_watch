@@ -49,6 +49,9 @@ def test_config_validation() -> None:
         Settings(max_reports=0)
     with pytest.raises(ValueError):
         Settings(task_list_name="  ")
+    with pytest.raises(ValueError):
+        Settings(tasks_mcp_url="http://evil.example.com")
+    assert Settings(tasks_mcp_url="https://x.com/mcp/").tasks_mcp_url == "https://x.com"
 
 
 # ------------------------------------------------------------------ reports
@@ -127,8 +130,7 @@ def test_stream_parser_full_flow() -> None:
                                       message_id="m1"))
     events += p.feed(AssistantMessage(
         content=[TextBlock("PHASE: digging\nok"),
-                 ToolUseBlock("2", "Write", {"file_path": "/n/x.md"}),
-                 ToolUseBlock("3", "mcp__google-task__patch_task", {"task": "t1"})],
+                 ToolUseBlock("2", "Write", {"file_path": "/n/x.md"})],
         model="m", usage={"input_tokens": 20, "output_tokens": 5}, message_id="m2"))
     events += p.feed(RateLimitEvent(RateLimitInfo(status="allowed_warning", utilization=0.8),
                                     uuid="u", session_id="s"))
@@ -137,9 +139,9 @@ def test_stream_parser_full_flow() -> None:
         "sources": ["https://a"]}))
 
     phases = [e.phase for e in events if isinstance(e, PhaseEvent)]
-    assert phases == [Phase.SCOUTING, Phase.DIGGING, Phase.WRITING, Phase.COMPLETING]
+    assert phases == [Phase.SCOUTING, Phase.DIGGING, Phase.WRITING]
     tools = [(e.name, e.detail) for e in events if isinstance(e, ToolEvent)]
-    assert tools == [("WebSearch", "uv"), ("Write", "/n/x.md"), ("patch_task", "t1")]
+    assert tools == [("WebSearch", "uv"), ("Write", "/n/x.md")]
     usages = [e.usage.total for e in events if isinstance(e, UsageEvent)]
     assert usages[:2] == [15, 40]
     assert any(isinstance(e, RateLimitEvt) and e.utilization == 0.8 for e in events)
@@ -162,13 +164,46 @@ def test_stream_parser_fallback_text_and_errors() -> None:
 async def test_runner_with_fake_backend(settings: Settings) -> None:
     backend = FakeBackend(delay=0)
     tasks = await backend.list_tasks(settings)
-    events = [e async for e in Runner(settings, backend, tasks).run()]
+    events = [e async for e in Runner(settings, backend, tasks, backend).run()]
     final = events[-1]
     assert isinstance(final, RunFinished) and final.report_path and final.report_path.exists()
     statuses = [r.status for r in final.runs]
     assert statuses == [Phase.DONE, Phase.DONE, Phase.SKIPPED]
     assert all(r.usage.total > 0 for r in final.runs)
     assert len(list(settings.notes_dir.glob("*.md"))) == 2
+    assert backend.completed == ["t1", "t2"]  # skipped task stays open
+
+
+async def test_runner_complete_failure_keeps_task_open(settings: Settings) -> None:
+    backend = FakeBackend(delay=0)
+    backend.fail_complete = True
+    tasks = (await backend.list_tasks(settings))[:1]
+    final = [e async for e in Runner(settings, backend, tasks, backend).run()][-1]
+    run = final.runs[0]
+    assert run.status == Phase.FAILED
+    assert "marking the task done failed" in run.reason and run.result_path
+
+
+class _NoFileBackend(FakeBackend):
+    async def run_task(self, settings, task):
+        yield TaskOutcome(Phase.DONE, summary="s", result_path="/does/not/exist.md")
+
+
+async def test_runner_done_without_file_is_failed(settings: Settings) -> None:
+    backend = _NoFileBackend(delay=0)
+    tasks = (await backend.list_tasks(settings))[:1]
+    final = [e async for e in Runner(settings, backend, tasks, backend).run()][-1]
+    assert final.runs[0].status == Phase.FAILED
+    assert backend.completed == []
+
+
+def test_research_options_have_no_mcp(settings: Settings) -> None:
+    from techno_watch_bot.claude import ClaudeCodeBackend
+
+    opts = ClaudeCodeBackend().options(settings, TaskInfo("t", "x"))
+    assert opts.mcp_servers == {} and opts.strict_mcp_config
+    assert not any(t.startswith("mcp__") for t in opts.allowed_tools)
+    assert opts.permission_mode == "dontAsk"
 
 
 class _BoomBackend(FakeBackend):
@@ -183,7 +218,7 @@ class _BoomBackend(FakeBackend):
 async def test_runner_failure_is_isolated(settings: Settings) -> None:
     backend = _BoomBackend(delay=0)
     tasks = await backend.list_tasks(settings)
-    final = [e async for e in Runner(settings, backend, tasks).run()][-1]
+    final = [e async for e in Runner(settings, backend, tasks, backend).run()][-1]
     assert final.runs[0].status == Phase.FAILED and "cli missing" in final.runs[0].reason
     assert final.runs[1].status == Phase.DONE
 
@@ -191,7 +226,7 @@ async def test_runner_failure_is_isolated(settings: Settings) -> None:
 async def test_runner_cancel_mid_task(settings: Settings) -> None:
     backend = FakeBackend(delay=0.05)
     tasks = await backend.list_tasks(settings)
-    runner = Runner(settings, backend, tasks)
+    runner = Runner(settings, backend, tasks, backend)
     events = []
     async for e in runner.run():
         events.append(e)

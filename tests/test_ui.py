@@ -25,7 +25,8 @@ def app(tmp_path: Path, monkeypatch) -> TechnoWatchApp:
     monkeypatch.setattr("techno_watch_bot.screens.settings.CONFIG_FILE", cfg)
     s = Settings(notes_dir=tmp_path / "notes", reports_dir=tmp_path / "reports")
     s.save(cfg)
-    return TechnoWatchApp(backend=FakeBackend(delay=0), settings=s)
+    fake = FakeBackend(delay=0)
+    return TechnoWatchApp(backend=fake, settings=s, task_source=fake)
 
 
 async def _wait_for(pilot, cond, tries: int = 200) -> None:
@@ -82,3 +83,19 @@ async def test_settings_save_and_validation(app: TechnoWatchApp, tmp_path: Path)
         assert isinstance(app.screen, HomeScreen)
         assert app.settings.max_reports == 3
         assert Settings.load(tmp_path / "config.toml").task_list_name == "Other list"
+
+
+async def test_picker_asks_to_connect_when_not_signed_in(app: TechnoWatchApp) -> None:
+    from textual.widgets import Static
+
+    from techno_watch_bot.tasks_api import AuthRequired
+
+    async def no_auth(settings):
+        raise AuthRequired("Google Tasks is not connected.")
+
+    app.task_source.list_tasks = no_auth
+    async with app.run_test(size=(140, 45)) as pilot:
+        await pilot.press("r")
+        await pilot.pause(0.2)
+        text = str(app.screen.query_one("#status", Static).render())
+        assert "not connected" in text and "connect" in text.lower()

@@ -90,7 +90,7 @@ class MonitorScreen(Screen):
         self.set_interval(1, self.refresh_panels)
         self.refresh_panels()
         self.app.settings.ensure_dirs()
-        self.runner = Runner(self.app.settings, self.app.backend, self.tasks)
+        self.runner = Runner(self.app.settings, self.app.backend, self.tasks, self.app.task_source)
         self.run_all()
 
     # ------------------------------------------------------------ worker

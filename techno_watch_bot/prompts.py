@@ -6,44 +6,6 @@ import datetime as dt
 from .config import Settings
 from .events import TaskInfo
 
-# ---------------------------------------------------------------- list tasks
-LIST_TASKS_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "task_list_id": {"type": "string"},
-        "tasks": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "id": {"type": "string"},
-                    "title": {"type": "string"},
-                    "notes": {"type": "string"},
-                    "due": {"type": "string"},
-                },
-                "required": ["id", "title"],
-            },
-        },
-        "error": {"type": "string"},
-    },
-    "required": ["tasks"],
-}
-
-
-def list_tasks_prompt(settings: Settings) -> str:
-    return f"""\
-Using ONLY the Google Tasks MCP tools ({settings.mcp_tool("list_task_lists")} and
-{settings.mcp_tool("list_tasks")}):
-1. Find the task list whose title is exactly "{settings.task_list_name}"
-   (case-insensitive match is acceptable).
-2. List its OPEN tasks (not completed, not deleted, not hidden). Follow pagination.
-3. Return them as structured output: task_list_id, and for each task its id,
-   title, notes (empty string if none) and due (empty string if none).
-If the list does not exist or a tool fails, return an empty `tasks` array and
-explain in `error`. Do not modify anything. Do not search the web.
-"""
-
-
 # ---------------------------------------------------------------- research
 RESEARCH_SCHEMA = {
     "type": "object",
@@ -62,7 +24,6 @@ RESEARCH_SCHEMA = {
             "description": "Absolute path of the main result file (empty if none).",
         },
         "sources": {"type": "array", "items": {"type": "string"}},
-        "task_marked_done": {"type": "boolean"},
     },
     "required": ["status", "summary", "reason", "result_path", "sources"],
 }
@@ -92,17 +53,19 @@ Be specific: names, versions, numbers, dates. If sources disagree, say so.
 
 RESEARCH_SYSTEM_APPEND = """\
 You are techno-watch-bot, an autonomous tech-watch researcher running
-unattended (nobody can answer questions). You work on ONE Google Task.
+unattended (nobody can answer questions). You work on ONE task from the
+user's to-do list. You do NOT have access to the to-do list itself: the app
+marks the task as done when you report success.
 
 Report progress by writing, on its own line, `PHASE: <name>` whenever you
-enter a phase: scouting, digging, writing, completing.
+enter a phase: scouting, digging, writing.
 
 Process:
 1. PHASE: scouting — read the task title and description. Do at most
    {scout_max} quick web searches to understand what the subject is.
    Decide whether there is enough public information to research it seriously.
    If NOT (too vague, private, inaccessible, nothing found): stop immediately,
-   do NOT modify the task, and return status "skipped" with a clear reason.
+   and return status "skipped" with a clear reason.
 2. PHASE: digging — collect as much relevant, recent, authoritative information
    as you can (official docs, primary sources, reputable articles, changelogs,
    benchmarks). Use WebSearch and WebFetch.
@@ -113,15 +76,12 @@ Process:
    Otherwise produce the default result described below.
    File name: `{today} - <short-slug>.md` (or the extension the task asks for).
    Never overwrite an existing file: add `-2`, `-3`… if needed.
-4. PHASE: completing — mark the task as completed with
-   {patch_tool} (status: "completed"), using task list id `{list_id}`
-   and task id `{task_id}`. Only do this if step 3 succeeded.
-5. Return the structured output. status "done" only if the result file exists
-   AND the task was marked completed; "failed" if something broke (explain in
-   reason).
+4. Return the structured output: status "done" only if the result file was
+   written (give its absolute path in result_path); "failed" if something
+   broke (explain in reason).
 
-Rules: never delete tasks or files; do not touch files outside the notes
-folder; do not ask questions.
+Rules: never delete files; do not touch files outside the notes folder; do
+not ask questions.
 
 {default_structure}
 """
@@ -133,15 +93,12 @@ def research_system_append(settings: Settings, task: TaskInfo) -> str:
         scout_max=settings.scout_max_searches,
         notes_dir=settings.notes_dir,
         today=today,
-        patch_tool=settings.mcp_tool("patch_task"),
-        list_id=task.list_id or "(find it with list_task_lists)",
-        task_id=task.id,
         default_structure=DEFAULT_NOTE_STRUCTURE.format(today=today, task_id=task.id),
     )
 
 
 def research_user_prompt(task: TaskInfo) -> str:
-    parts = [f"Task title: {task.title}", f"Task id: {task.id}"]
+    parts = [f"Task title: {task.title}"]
     if task.due:
         parts.append(f"Due: {task.due}")
     parts.append("Task description:")

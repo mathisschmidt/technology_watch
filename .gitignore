@@ -6,3 +6,5 @@ dist/
 files.zip
 veille-tech.tar.gz
 .idea/
+build/
+*.spec

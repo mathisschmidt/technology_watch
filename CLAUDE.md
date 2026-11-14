@@ -38,6 +38,15 @@ uv run techno-watch-bot --fake
 uv run pytest
 ```
 
+```bash
+uv run --group build python scripts/build.py
+```
+
+The last one builds a single-file executable with PyInstaller into `dist/`
+(`--with-claude-cli` embeds the SDK's bundled CLI). If a dependency loads modules or
+data lazily, add a `--collect-*` option in `scripts/build.py`, then smoke-test the
+binary with `--fake`.
+
 ## Key design points
 
 - Task management is Python only: `tasks_api.McpTasksClient` POSTs JSON-RPC `tools/call`

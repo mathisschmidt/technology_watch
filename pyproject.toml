@@ -19,6 +19,7 @@ techno-watch-bot = "techno_watch_bot.cli:main"
 
 [dependency-groups]
 dev = ["pytest>=8.0", "pytest-asyncio>=0.23"]
+build = ["pyinstaller>=6.10"]
 
 [build-system]
 requires = ["setuptools>=68"]

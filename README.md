@@ -49,6 +49,26 @@ simulated backend (no Claude calls):
 uv run techno-watch-bot --fake
 ```
 
+## Build a single file to share
+
+```bash
+uv run --group build python scripts/build.py
+```
+
+This writes `dist/techno-watch-bot-<os>-<arch>` (about 30 MB, `.exe` on Windows): one
+executable with Python and all dependencies inside, so the person you share it with
+doesn't need Python or uv. They only run it:
+
+```bash
+./techno-watch-bot-linux-x86_64
+```
+
+They still need Claude Code installed and logged in (`claude` on their PATH), and
+their own google-tasks-mcp URL in Settings. To embed the Claude Code CLI too (adds
+about 340 MB), build with `--with-claude-cli`. PyInstaller doesn't cross-compile:
+build on each OS you want to share for. On macOS, the person may need to allow the
+file in System Settings → Privacy & Security the first time.
+
 ## Screens
 
 | Screen | Keys |

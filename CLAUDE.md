@@ -42,7 +42,15 @@ uv run pytest
 uv run --group build python scripts/build.py
 ```
 
-The last one builds a single-file executable with PyInstaller into `dist/`
+```bash
+uv run --with playwright --with pillow python scripts/screenshots.py
+```
+
+`scripts/screenshots.py` regenerates `docs/screenshots/*.png` and `docs/demo.gif` from the
+fake backend (set `CHROMIUM_PATH` if Playwright's Chromium isn't installed). Re-run it after
+UI changes so the README stays accurate.
+
+`scripts/build.py` builds a single-file executable with PyInstaller into `dist/`
 (`--with-claude-cli` embeds the SDK's bundled CLI). If a dependency loads modules or
 data lazily, add a `--collect-*` option in `scripts/build.py`, then smoke-test the
 binary with `--fake`.

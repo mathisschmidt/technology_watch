@@ -5,6 +5,7 @@ import datetime as dt
 from dataclasses import dataclass
 from pathlib import Path
 
+from .config import tilde
 from .events import Phase, TaskRun, Usage
 
 SUFFIX = "-research-report.md"
@@ -81,7 +82,7 @@ def render_report(
     for i, r in enumerate(runs, 1):
         lines += [f"### {i}. {r.task.title}", "", f"- **Status:** {r.status.icon} {r.status.value}"]
         if r.result_path:
-            lines.append(f"- **Result:** `{r.result_path}`")
+            lines.append(f"- **Result:** `{tilde(r.result_path)}`")
         if r.status != Phase.DONE and r.reason:
             lines.append(f"- **Why not done:** {r.reason}")
         u = r.usage

@@ -7,6 +7,7 @@ from textual.binding import Binding
 from textual.screen import Screen
 from textual.widgets import DataTable, Footer, Header, MarkdownViewer, Static
 
+from ..config import tilde
 from ..reports import fmt_tokens, list_reports
 
 
@@ -24,7 +25,7 @@ class HistoryScreen(Screen):
         s = self.app.settings
         reports = list_reports(s.reports_dir)
         self.query_one("#info", Static).update(
-            f"{s.reports_dir} — {len(reports)} report(s), the {s.max_reports} newest are kept."
+            f"{tilde(s.reports_dir)} — {len(reports)} report(s), the {s.max_reports} newest are kept."
             + ("" if reports else "\nNo report yet: run some research first.")
         )
         table = self.query_one(DataTable)

@@ -20,6 +20,7 @@ from ..events import (
     Usage,
     UsageEvent,
 )
+from ..config import tilde
 from ..reports import fmt_duration, fmt_tokens
 from ..runner import RunFinished, Runner, TaskFinished, TaskStarted, TaskUpdate
 
@@ -33,7 +34,7 @@ class MonitorScreen(Screen):
     ]
     DEFAULT_CSS = """
     MonitorScreen #top { height: 1fr; }
-    MonitorScreen #queue { width: 3fr; border: round $primary; }
+    MonitorScreen #queue { width: 3fr; border: round $primary; overflow-x: hidden; }
     MonitorScreen #right { width: 2fr; }
     MonitorScreen #current, MonitorScreen #stats, MonitorScreen #limits {
         border: round $primary; padding: 0 1; height: auto;
@@ -119,7 +120,7 @@ class MonitorScreen(Screen):
                 table.update_cell(key, "time", fmt_duration(run.duration_s))
                 msg = f"  {run.status.icon} {run.status.value}"
                 if run.result_path:
-                    msg += f" → {run.result_path}"
+                    msg += f" → {tilde(run.result_path)}"
                 if run.reason and run.status != Phase.DONE:
                     msg += f" [dim]({run.reason})[/dim]"
                 log.write(msg)
@@ -135,7 +136,7 @@ class MonitorScreen(Screen):
             table.update_cell(str(ev.index), "status", f"{e.phase.icon} {e.phase.value}")
             self.query_one(RichLog).write(f"  {e.phase.icon} {e.phase.value}")
         elif isinstance(e, ToolEvent):
-            self.last_tool = f"{e.name} {e.detail}".strip()
+            self.last_tool = tilde(f"{e.name} {e.detail}".strip())
             self.query_one(RichLog).write(f"  [dim]· {self.last_tool[:200]}[/dim]")
         elif isinstance(e, UsageEvent):
             self.live_usage = e.usage
@@ -153,7 +154,7 @@ class MonitorScreen(Screen):
         text = (f"{head}  ✅ {counts[Phase.DONE]}  ⏭️ {counts[Phase.SKIPPED]}  "
                 f"❌ {counts[Phase.FAILED]}  🚫 {counts[Phase.CANCELLED]}\n")
         if ev.report_path:
-            text += f"Report: {ev.report_path}  [dim](o to open, Esc for home)[/dim]"
+            text += f"Report: {tilde(ev.report_path)}  [dim](o to open, Esc for home)[/dim]"
         else:
             text += f"[red]Report could not be written:[/red] {ev.report_error}"
         self.query_one("#banner", Static).update(text)

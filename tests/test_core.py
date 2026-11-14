@@ -237,3 +237,12 @@ async def test_runner_cancel_mid_task(settings: Settings) -> None:
     assert [r.status for r in final.runs] == [Phase.CANCELLED] * 3
     assert sum(isinstance(e, TaskFinished) for e in events) == 3
     assert "n_cancelled: 3" in final.report_path.read_text()
+
+
+def test_tilde_display() -> None:
+    from techno_watch_bot.config import tilde
+
+    home = Path.home()
+    assert tilde(home / "notes" / "a.md") == str(Path("~") / "notes" / "a.md")
+    assert tilde("/elsewhere/x") == "/elsewhere/x"
+    assert Settings(notes_dir=tilde(home / "n")).notes_dir == home / "n"  # round-trips on save

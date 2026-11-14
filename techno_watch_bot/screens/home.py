@@ -8,6 +8,7 @@ from textual.screen import Screen
 from textual.widgets import Footer, Header, OptionList, Static
 from textual.widgets.option_list import Option
 
+from ..config import tilde
 from ..reports import list_reports
 
 
@@ -66,10 +67,10 @@ class HomeScreen(Screen):
         n = len(list_reports(s.reports_dir))
         self.query_one("#summary", Static).update(
             f"[b]Task list[/b]   {s.task_list_name}\n"
-            f"[b]Notes dir[/b]   {s.notes_dir}\n"
-            f"[b]Reports dir[/b] {s.reports_dir}  [dim]({n}/{s.max_reports} kept)[/dim]\n"
+            f"[b]Notes dir[/b]   {tilde(s.notes_dir)}\n"
+            f"[b]Reports dir[/b] {tilde(s.reports_dir)}  [dim]({n}/{s.max_reports} kept)[/dim]\n"
             f"[b]Tasks MCP[/b]   {s.tasks_mcp_url or '—'}  "
-            f"[dim]({self.app.task_source.status(s)})[/dim]\n"
+            f"[dim]· {self.app.task_source.status(s)}[/dim]\n"
             f"[b]Model[/b]       {s.model or 'Claude Code default'}"
         )
 

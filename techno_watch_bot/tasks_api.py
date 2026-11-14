@@ -346,7 +346,7 @@ class McpTaskSource:
             return "not configured: set the URL in Settings"
         tok = self.client(settings).token
         if tok and tok.valid:
-            return f"connected ({tok.days_left} days left)"
+            return f"connected, {tok.days_left} days left"
         return "not connected"
 
     async def list_tasks(self, settings: Settings) -> list[TaskInfo]:
@@ -360,4 +360,4 @@ class McpTaskSource:
         self.client(settings)  # raises NotConfigured when no URL is set
         tok = login(settings.tasks_mcp_url)
         self.client(settings).forget_token()
-        return f"connected ({tok.days_left} days left)"
+        return f"connected, {tok.days_left} days left"

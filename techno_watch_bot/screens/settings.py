@@ -7,7 +7,7 @@ from textual.containers import Horizontal, VerticalScroll
 from textual.screen import Screen
 from textual.widgets import Button, Footer, Header, Input, Label, Static
 
-from ..config import CONFIG_FILE, Settings
+from ..config import CONFIG_FILE, Settings, tilde
 
 FIELDS: list[tuple[str, str, str]] = [
     ("task_list_name", "Google Tasks list name", "Title of the list to read tasks from"),
@@ -39,11 +39,11 @@ class SettingsScreen(Screen):
         s = self.app.settings
         yield Header()
         with VerticalScroll():
-            yield Static(f"Settings — {CONFIG_FILE}", classes="title")
+            yield Static(f"Settings — {tilde(CONFIG_FILE)}", classes="title")
             for key, label, help_ in FIELDS:
                 yield Label(label, classes="field-label")
                 yield Static(help_, classes="field-help")
-                yield Input(str(getattr(s, key)), id=f"f_{key}")
+                yield Input(tilde(getattr(s, key)), id=f"f_{key}")
             yield Static(id="errors")
             with Horizontal(id="buttons"):
                 yield Button("Save", variant="primary", id="save")

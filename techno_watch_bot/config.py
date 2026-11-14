@@ -17,6 +17,17 @@ DEFAULT_NOTES_DIR = Path.home() / "techno-watch" / "notes"
 DEFAULT_REPORTS_DIR = Path.home() / ".local" / "share" / "techno-watch-bot" / "reports"
 
 
+def tilde(value: object) -> str:
+    """Display helper: show paths under the home folder as ~/…"""
+    text = str(value)
+    home = str(Path.home())
+    if home and home != "/":
+        text = text.replace(home + os.sep, "~" + os.sep)
+        if text == home:
+            text = "~"
+    return text
+
+
 class Settings(BaseModel):
     task_list_name: str = "Veille tech"
     notes_dir: Path = DEFAULT_NOTES_DIR

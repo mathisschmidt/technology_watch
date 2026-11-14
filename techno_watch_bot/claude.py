@@ -230,7 +230,7 @@ class FakeBackend:
         self.fail_complete = False
 
     def status(self, settings: Settings) -> str:
-        return "fake (simulated)"
+        return "simulated"
 
     def login(self, settings: Settings) -> str:
         return self.status(settings)
@@ -244,10 +244,26 @@ class FakeBackend:
     async def list_tasks(self, settings: Settings) -> list[TaskInfo]:
         await asyncio.sleep(self.delay)
         return [
-            TaskInfo("t1", "Textual 8 — what's new", "Focus on the new widgets.", list_id="L"),
-            TaskInfo("t2", "uv workspaces", "", list_id="L"),
+            TaskInfo("t1", "Textual 8 — what's new",
+                     "Focus on the new widgets and whether we should upgrade.", list_id="L"),
+            TaskInfo("t2", "uv workspaces", "Can it replace our monorepo tooling?", list_id="L"),
             TaskInfo("t3", "that thing from the meeting", "", list_id="L"),
         ]
+
+    # Scripted research so --fake (and the README screenshots) look like a real run.
+    _SCRIPT = {
+        "t1": (["Textual 8 release notes", "Textual 8 new widgets"],
+               ["https://textual.textualize.io/blog/", "https://github.com/Textualize/textual/releases",
+                "https://textual.textualize.io/widget_gallery/"],
+               "Summarised the Textual 8 release: new widgets, CSS changes and breaking "
+               "changes, with an upgrade checklist."),
+        "t2": (["uv workspaces monorepo", "uv workspace vs pants vs hatch"],
+               ["https://docs.astral.sh/uv/concepts/projects/workspaces/",
+                "https://github.com/astral-sh/uv/issues?q=workspace",
+                "https://docs.astral.sh/uv/concepts/projects/dependencies/"],
+               "Compared uv workspaces with the current monorepo setup; recommends a pilot "
+               "on two packages first."),
+    }
 
     async def run_task(self, settings: Settings, task: TaskInfo) -> AsyncIterator[TaskEvent]:
         usage = Usage()
@@ -257,22 +273,28 @@ class FakeBackend:
             await asyncio.sleep(self.delay)
             yield ev
             if tokens:
-                usage = usage + Usage(input_tokens=tokens, output_tokens=tokens // 4)
+                usage = usage + Usage(input_tokens=tokens, output_tokens=tokens // 4,
+                                      cache_read_tokens=tokens // 2)
                 yield UsageEvent(usage)
 
+        searches, pages, summary = self._SCRIPT.get(
+            task.id, ([task.title], [], f"Researched {task.title} and wrote a note."))
         async for e in step(PhaseEvent(Phase.SCOUTING)):
             yield e
-        async for e in step(ToolEvent("WebSearch", task.title), 1800):
+        async for e in step(ToolEvent("WebSearch", searches[0]), 1800):
             yield e
-        yield RateLimitEvt("allowed", "five_hour", 0.42, int(dt.datetime.now().timestamp()) + 3600)
-        if "thing" in task.title:
+        yield RateLimitEvt("allowed", "five_hour", 0.42, int(dt.datetime.now().timestamp()) + 9000)
+        if not pages:
             yield TaskOutcome(Phase.SKIPPED, reason="Title too vague to identify a subject.",
                               usage=usage, cost_usd=0.01, num_turns=2)
             return
         async for e in step(PhaseEvent(Phase.DIGGING)):
             yield e
-        for q in ("official docs", "changelog", "benchmarks"):
-            async for e in step(ToolEvent("WebFetch", f"{task.title} {q}"), 4000):
+        for q in searches[1:]:
+            async for e in step(ToolEvent("WebSearch", q), 2200):
+                yield e
+        for url in pages:
+            async for e in step(ToolEvent("WebFetch", url), 4000):
                 yield e
         async for e in step(PhaseEvent(Phase.WRITING)):
             yield e
@@ -281,8 +303,7 @@ class FakeBackend:
         path.write_text(f"# {task.title}\n\n(fake note)\n", encoding="utf-8")
         async for e in step(ToolEvent("Write", str(path)), 3000):
             yield e
-        yield TaskOutcome(Phase.DONE, summary=f"Researched {task.title} and wrote a note.",
-                          result_path=str(path), sources=["https://example.com"],
+        yield TaskOutcome(Phase.DONE, summary=summary, result_path=str(path), sources=pages,
                           usage=usage, cost_usd=0.12, num_turns=9)
 
 

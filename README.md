@@ -49,6 +49,21 @@ simulated backend (no Claude calls):
 uv run techno-watch-bot --fake
 ```
 
+## Download
+
+Ready-to-run files for Linux, macOS and Windows are on the
+[Releases](https://github.com/mathisschmidt/technology_watch/releases) page.
+To publish a new release, push a version tag; GitHub Actions builds and attaches
+the files (`.github/workflows/release.yml`):
+
+```bash
+git tag v2.0.0
+```
+
+```bash
+git push origin v2.0.0
+```
+
 ## Build a single file to share
 
 ```bash
